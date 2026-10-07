@@ -91,12 +91,13 @@ jobs:
         if: inputs.run_pluginval
         shell: bash
         run: |
-          curl -LO "https://github.com/Tracktion/pluginval/releases/download/v1.0.4/pluginval_${{ runner.os }}.zip"
-          # -y answers yes to overwrite prompts: on a self-hosted runner with
-          # a persistent workspace, pluginval.app from the previous run makes
-          # 7z block on an interactive replace prompt and fail (exit 2).
-          7z x -y "pluginval_${{ runner.os }}.zip"
-          ${{ matrix.pluginval_bin }} --strictness-level 10 --verbose \
+          curl -L -o "$RUNNER_TEMP/pluginval.zip" "https://github.com/Tracktion/pluginval/releases/download/v1.0.4/pluginval_${{ runner.os }}.zip"
+          # Extract into $RUNNER_TEMP (wiped per job): a leftover bundle in a
+          # persistent self-hosted workspace can carry perms/quarantine that
+          # make overwrite fail with EPERM even with 7z -y.
+          7z x -y -o"$RUNNER_TEMP/pluginval-bin" "$RUNNER_TEMP/pluginval.zip"
+          "$RUNNER_TEMP/pluginval-bin/${{ matrix.pluginval_bin }}" \
+            --strictness-level 10 --verbose \
             --validate "build/${{ inputs.plugin_target }}_artefacts/Release/VST3/${{ inputs.product_name }}.vst3"
 
       - name: auval (AU)
