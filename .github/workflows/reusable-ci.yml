@@ -1,0 +1,106 @@
+name: Plugin CI (reusable)
+
+on:
+  workflow_call:
+    inputs:
+      product_name:
+        description: Display name used for artefact bundles, e.g. "EON-Vari mu DSP"
+        required: true
+        type: string
+      plugin_target:
+        description: CMake plugin target; artefacts land in <target>_artefacts
+        required: true
+        type: string
+      run_dsp_tests:
+        type: boolean
+        default: true
+      run_pluginval:
+        type: boolean
+        default: true
+      au_type:
+        description: AU component type, e.g. aufx
+        type: string
+        default: "aufx"
+      au_subtype:
+        description: AU subtype code; empty skips auval
+        type: string
+        default: ""
+      au_manufacturer:
+        description: AU manufacturer code
+        type: string
+        default: ""
+
+jobs:
+  plugin-ci:
+    name: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            pluginval_bin: ./pluginval.exe
+          - os: macos-latest
+            pluginval_bin: pluginval.app/Contents/MacOS/pluginval
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Show platform pin
+        shell: bash
+        run: grep -H 'EON_PLATFORM_REF' cmake/Platform.cmake || echo "no cmake/Platform.cmake pin"
+
+      - name: Cache FetchContent deps
+        uses: actions/cache@v4
+        with:
+          path: build/_deps
+          key: ${{ runner.os }}-deps-${{ hashFiles('cmake/Platform.cmake', 'CMakeLists.txt') }}
+
+      - name: Configure
+        shell: bash
+        run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DJUCE_DIR=
+
+      - name: Build
+        run: cmake --build build --config Release -j
+
+      - name: CTest
+        if: inputs.run_dsp_tests
+        run: ctest --test-dir build --output-on-failure -C Release
+
+      - name: pluginval (VST3, strictness 10)
+        if: inputs.run_pluginval
+        shell: bash
+        run: |
+          curl -LO "https://github.com/Tracktion/pluginval/releases/download/v1.0.4/pluginval_${{ runner.os }}.zip"
+          7z x "pluginval_${{ runner.os }}.zip"
+          ${{ matrix.pluginval_bin }} --strictness-level 10 --verbose \
+            --validate "build/${{ inputs.plugin_target }}_artefacts/Release/VST3/${{ inputs.product_name }}.vst3"
+
+      - name: auval (AU)
+        if: runner.os == 'macOS' && inputs.au_subtype != ''
+        run: |
+          mkdir -p "$HOME/Library/Audio/Plug-Ins/Components"
+          cp -R "build/${{ inputs.plugin_target }}_artefacts/Release/AU/${{ inputs.product_name }}.component" \
+                "$HOME/Library/Audio/Plug-Ins/Components/"
+          auval -v ${{ inputs.au_type }} ${{ inputs.au_subtype }} ${{ inputs.au_manufacturer }}
+
+      - name: Record artefact SHA256
+        if: always()
+        shell: bash
+        run: |
+          ART="build/${{ inputs.plugin_target }}_artefacts/Release"
+          if [ -d "$ART" ]; then
+            find "$ART" -type f -exec shasum -a 256 {} + | tee artefact-sha256.txt
+          else
+            echo "no artefact dir" | tee artefact-sha256.txt
+          fi
+
+      - name: Upload artefacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ inputs.product_name }}-${{ runner.os }}
+          path: |
+            build/${{ inputs.plugin_target }}_artefacts/Release/
+            artefact-sha256.txt
+            build/Testing/Temporary/LastTest.log
+          retention-days: 14
