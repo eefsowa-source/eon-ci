@@ -92,7 +92,10 @@ jobs:
         shell: bash
         run: |
           curl -LO "https://github.com/Tracktion/pluginval/releases/download/v1.0.4/pluginval_${{ runner.os }}.zip"
-          7z x "pluginval_${{ runner.os }}.zip"
+          # -y answers yes to overwrite prompts: on a self-hosted runner with
+          # a persistent workspace, pluginval.app from the previous run makes
+          # 7z block on an interactive replace prompt and fail (exit 2).
+          7z x -y "pluginval_${{ runner.os }}.zip"
           ${{ matrix.pluginval_bin }} --strictness-level 10 --verbose \
             --validate "build/${{ inputs.plugin_target }}_artefacts/Release/VST3/${{ inputs.product_name }}.vst3"
 
