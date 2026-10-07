@@ -32,18 +32,29 @@ on:
 
 jobs:
   plugin-ci:
-    name: ${{ matrix.os }}
+    name: ${{ matrix.name }}
     strategy:
       fail-fast: false
       matrix:
         include:
-          - os: windows-latest
+          - name: windows-latest
+            labels: [windows-latest]
             pluginval_bin: ./pluginval.exe
-          - os: macos-latest
+          # macOS leg runs on the repo's self-hosted Mac: warm JUCE/_deps and
+          # incremental builds beat a cold hosted runner by an order of
+          # magnitude, and it can later run real host-load gates (REAPER/Live).
+          - name: eon-mac (self-hosted)
+            labels: [self-hosted, eon-mac]
             pluginval_bin: pluginval.app/Contents/MacOS/pluginval
-    runs-on: ${{ matrix.os }}
+    runs-on: ${{ matrix.labels }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          # Persistent workspace on the self-hosted runner keeps build/_deps
+          # and object files; hosted runners are fresh VMs anyway.
+          clean: false
+
+      - uses: mozilla-actions/sccache-action@v0.0.11
 
       - name: Show platform pin
         shell: bash
@@ -57,7 +68,11 @@ jobs:
 
       - name: Configure
         shell: bash
-        run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DJUCE_DIR=
+        run: >-
+          cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DJUCE_DIR=
+          -DEON_BUILD_TOOLS=OFF
+          -DCMAKE_C_COMPILER_LAUNCHER=sccache
+          -DCMAKE_CXX_COMPILER_LAUNCHER=sccache
 
       - name: Build
         shell: bash
