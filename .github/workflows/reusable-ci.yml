@@ -88,11 +88,17 @@ jobs:
         shell: bash
         run: |
           ART="build/${{ inputs.plugin_target }}_artefacts/Release"
-          if [ -d "$ART" ]; then
-            find "$ART" -type f -exec shasum -a 256 {} + | tee artefact-sha256.txt
-          else
-            echo "no artefact dir" | tee artefact-sha256.txt
-          fi
+          {
+            if [ -d "$ART" ]; then
+              if command -v sha256sum >/dev/null 2>&1; then
+                find "$ART" -type f -exec sha256sum {} +
+              else
+                find "$ART" -type f -exec shasum -a 256 {} +
+              fi
+            else
+              echo "no artefact dir"
+            fi
+          } | tee artefact-sha256.txt
 
       - name: Upload artefacts
         if: always()
