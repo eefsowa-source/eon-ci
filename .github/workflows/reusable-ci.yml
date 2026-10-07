@@ -60,7 +60,13 @@ jobs:
         run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DJUCE_DIR=
 
       - name: Build
-        run: cmake --build build --config Release -j
+        shell: bash
+        run: |
+          # Bare `-j` is unbounded under Unix Makefiles (macOS): it spawns a
+          # clang per TU on a ~7 GB runner and thrashes. MSBuild bounds `-m`
+          # by core count on its own. Always pass an explicit core count.
+          JOBS=$(nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo 4)
+          cmake --build build --config Release --parallel "$JOBS"
 
       - name: CTest
         if: inputs.run_dsp_tests
