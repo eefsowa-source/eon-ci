@@ -47,6 +47,9 @@ jobs:
             labels: [self-hosted, eon-mac]
             pluginval_bin: pluginval.app/Contents/MacOS/pluginval
     runs-on: ${{ matrix.labels }}
+    env:
+      # Default is 10G. The self-hosted Mac keeps this cache across jobs.
+      SCCACHE_CACHE_SIZE: 2G
     steps:
       - uses: actions/checkout@v4
         with:
@@ -55,6 +58,16 @@ jobs:
           clean: false
 
       - uses: mozilla-actions/sccache-action@v0.0.11
+
+      - name: Restart sccache so the size cap applies
+        shell: bash
+        run: |
+          # The daemon reads SCCACHE_CACHE_SIZE only at startup, and a
+          # previous job may have left it running with the default 10G.
+          # --stop-server exits non-zero when no server is running.
+          sccache --stop-server || true
+          sccache --start-server
+          sccache --show-stats
 
       - name: Show platform pin
         shell: bash
